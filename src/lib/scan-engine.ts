@@ -84,12 +84,14 @@ function generateSubdomains(domain: string): Array<{
   domain: string; ip: string; statusCode: number; alive: boolean;
   webServer: string; title: string; contentLength: number; techStack: string; source: string;
 }> {
-  const prefixes = pickN(SUBDOMAIN_PREFIXES, 8, 20);
+  // Reduced from 8-20 to 5-12 subdomains
+  const prefixes = pickN(SUBDOMAIN_PREFIXES, 5, 12);
   return prefixes.map(prefix => ({
     domain: `${prefix}.${domain}`,
     ip: randomIp(),
     statusCode: Math.random() > 0.2 ? 200 : randomStatusCode(),
-    alive: Math.random() > 0.15,
+    // 60% alive probability (was 85%)
+    alive: Math.random() < 0.6,
     webServer: pick(WEB_SERVERS),
     title: `${prefix} - ${domain}`,
     contentLength: Math.floor(Math.random() * 50000),
@@ -107,9 +109,9 @@ function generateEndpoints(domain: string): Array<{
     contentLength: number; category: string; parameters: string; responseTime: number;
   }> = [];
 
-  // JS files
+  // JS files — reduced count
   const jsFiles = ['app.js', 'main.js', 'vendor.js', 'chunk.js', 'runtime.js', 'analytics.js', 'tracking.js', 'config.js', 'api.js', 'utils.js', 'bundle.min.js', 'polyfills.js'];
-  for (const file of pickN(jsFiles, 3, 6)) {
+  for (const file of pickN(jsFiles, 2, 4)) {
     endpoints.push({
       url: `https://${domain}/static/js/${file}`,
       method: 'GET', statusCode: 200, contentType: 'application/javascript',
@@ -118,55 +120,75 @@ function generateEndpoints(domain: string): Array<{
     });
   }
 
-  // API endpoints
+  // API endpoints — reduced count, more realistic status codes
   const apiPaths = ['/api/v1/users', '/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/profile',
     '/api/v1/admin/users', '/api/v1/config', '/api/v1/upload', '/api/v1/search',
     '/api/v1/tokens', '/api/v1/webhooks', '/api/v1/payments', '/api/v1/notifications',
     '/api/graphql', '/api/rest/docs', '/api/v2/health'];
-  for (const path of pickN(apiPaths, 4, 8)) {
+  for (const path of pickN(apiPaths, 3, 6)) {
     const methods = ['GET', 'POST', 'PUT', 'DELETE'];
     const params = path.includes('users') || path.includes('search') ? JSON.stringify(['id', 'page', 'limit']) :
       path.includes('upload') ? JSON.stringify(['file', 'type']) : JSON.stringify([]);
+    // Most API endpoints return 200 or 404; 403/500 are less common
+    const apiStatusRoll = Math.random();
+    const apiStatus = apiStatusRoll < 0.45 ? 200 : apiStatusRoll < 0.70 ? 404 : apiStatusRoll < 0.85 ? 403 : randomStatusCode();
     endpoints.push({
       url: `https://${domain}${path}`,
-      method: pick(methods), statusCode: randomStatusCode(), contentType: 'application/json',
+      method: pick(methods), statusCode: apiStatus, contentType: 'application/json',
       contentLength: Math.floor(Math.random() * 10000), category: 'api',
       parameters: params, responseTime: Math.floor(Math.random() * 500) + 30,
     });
   }
 
-  // Login/Admin pages
+  // Login/Admin pages — mostly return 200 or 302 (redirect), rarely 403
   const authPaths = ['/login', '/admin', '/admin/dashboard', '/wp-admin', '/console',
     '/manager/html', '/dashboard', '/panel', '/control', '/cms/admin'];
-  for (const path of pickN(authPaths, 2, 4)) {
+  for (const path of pickN(authPaths, 1, 3)) {
+    // Login pages mostly return 200 or 302; 403 is possible but less common; 404 is most common for non-existent panels
+    const authRoll = Math.random();
+    const authStatus = authRoll < 0.35 ? 200 : authRoll < 0.55 ? 302 : authRoll < 0.80 ? 404 : 403;
     endpoints.push({
       url: `https://${domain}${path}`,
-      method: 'GET', statusCode: pick([200, 200, 302, 403]), contentType: 'text/html',
+      method: 'GET', statusCode: authStatus, contentType: 'text/html',
       contentLength: Math.floor(Math.random() * 30000), category: path.includes('admin') || path.includes('panel') || path.includes('control') ? 'admin' : 'login',
       parameters: '[]', responseTime: Math.floor(Math.random() * 400) + 50,
     });
   }
 
-  // Sensitive files
+  // Sensitive files — MOST should get 404/403 (realistic: these are usually protected or non-existent)
   const sensitiveFiles = ['.env', '.env.bak', '.env.local', '.git/config', '.DS_Store',
     'robots.txt', 'sitemap.xml', '.htaccess', 'web.config', 'package.json',
     'composer.json', 'wp-config.php.bak', '.svn/entries', 'backup.sql',
     'dump.sql', 'database.sql', '.well-known/security.txt', 'crossdomain.xml'];
-  for (const file of pickN(sensitiveFiles, 3, 6)) {
+  for (const file of pickN(sensitiveFiles, 2, 4)) {
+    // 70% chance 404, 20% chance 403, 10% chance 200 (very rare to actually be exposed)
+    const sensitiveRoll = Math.random();
+    let sensitiveStatus: number;
+    let sensitiveContentType: string;
+    if (sensitiveRoll < 0.70) {
+      sensitiveStatus = 404;
+      sensitiveContentType = 'text/html';
+    } else if (sensitiveRoll < 0.90) {
+      sensitiveStatus = 403;
+      sensitiveContentType = 'text/html';
+    } else {
+      sensitiveStatus = 200;
+      sensitiveContentType = pick(['text/plain', 'application/json', 'text/xml', 'application/octet-stream']);
+    }
     endpoints.push({
       url: `https://${domain}/${file}`,
-      method: 'GET', statusCode: Math.random() > 0.5 ? 200 : 403, contentType: pick(['text/plain', 'application/json', 'text/xml', 'application/octet-stream']),
+      method: 'GET', statusCode: sensitiveStatus, contentType: sensitiveContentType,
       contentLength: Math.floor(Math.random() * 5000), category: 'sensitive',
       parameters: '[]', responseTime: Math.floor(Math.random() * 200) + 10,
     });
   }
 
-  // Interesting paths
+  // Interesting paths — reduced count
   const interestingPaths = ['/swagger-ui/', '/api-docs', '/phpinfo.php', '/info.php',
     '/server-status', '/server-info', '/.github/workflows/', '/jenkins/',
     '/debug/', '/trace', '/actuator/health', '/actuator/env',
     '/graphql', '/graphiql', '/elmah.axd', '/elmah'];
-  for (const path of pickN(interestingPaths, 2, 4)) {
+  for (const path of pickN(interestingPaths, 1, 3)) {
     endpoints.push({
       url: `https://${domain}${path}`,
       method: 'GET', statusCode: randomStatusCode(), contentType: pick(['text/html', 'application/json']),
@@ -187,52 +209,10 @@ function generateVulnerabilities(domain: string): Array<{
     template: string; type: string; data: string;
   }> = [];
 
-  const vulnTemplates = [
-    {
-      title: 'Exposed .env File',
-      severity: 'critical',
-      description: 'A .env file containing sensitive configuration data including database credentials and API keys is publicly accessible.',
-      url: `https://${domain}/.env`,
-      template: 'exposure/env-file',
-      type: 'exposure',
-      data: JSON.stringify({ match: 'DB_PASSWORD=', statusCode: 200 }),
-    },
-    {
-      title: 'CORS Misconfiguration',
-      severity: 'high',
-      description: 'The server returns a wildcard Access-Control-Allow-Origin header, allowing any origin to access the API.',
-      url: `https://${domain}/api/v1/users`,
-      template: 'misconfig/cors-wildcard',
-      type: 'misconfig',
-      data: JSON.stringify({ header: 'Access-Control-Allow-Origin: *', statusCode: 200 }),
-    },
-    {
-      title: 'Open Redirect',
-      severity: 'medium',
-      description: 'An open redirect vulnerability allows redirection to arbitrary external URLs via the redirect parameter.',
-      url: `https://${domain}/auth/callback?redirect=https://evil.com`,
-      template: 'vuln/open-redirect',
-      type: 'injection',
-      data: JSON.stringify({ parameter: 'redirect', payload: 'https://evil.com' }),
-    },
-    {
-      title: 'Reflected XSS',
-      severity: 'high',
-      description: 'A reflected cross-site scripting vulnerability was found in the search parameter. User input is reflected without proper sanitization.',
-      url: `https://${domain}/search?q=%3Cscript%3Ealert(1)%3C/script%3E`,
-      template: 'vuln/reflected-xss',
-      type: 'injection',
-      data: JSON.stringify({ parameter: 'q', payload: '<script>alert(1)</script>' }),
-    },
-    {
-      title: 'SQL Injection Indicator',
-      severity: 'critical',
-      description: 'A potential SQL injection vulnerability was detected. Error-based SQL injection is possible through the id parameter.',
-      url: `https://${domain}/api/v1/users?id=1' OR '1'='1`,
-      template: 'vuln/sql-injection',
-      type: 'injection',
-      data: JSON.stringify({ parameter: 'id', payload: "1' OR '1'='1", errorBased: true }),
-    },
+  // Realistic vulnerability pool — NO critical, only low/medium with rare high
+  // Removed: "Exposed .env File" (critical), "Default Credentials Detected" (critical),
+  // "SSRF" (high, too specific), "SQL Injection" (critical), "Exposed Git Repository" (critical)
+  const lowVulns = [
     {
       title: 'Missing Security Headers',
       severity: 'low',
@@ -241,60 +221,6 @@ function generateVulnerabilities(domain: string): Array<{
       template: 'misconfig/missing-security-headers',
       type: 'misconfig',
       data: JSON.stringify({ missing: ['X-Frame-Options', 'X-Content-Type-Options', 'Content-Security-Policy'] }),
-    },
-    {
-      title: 'Information Disclosure - Stack Trace',
-      severity: 'medium',
-      description: 'The application exposes detailed stack trace information in error responses, revealing internal paths and technology stack.',
-      url: `https://${domain}/api/v1/error`,
-      template: 'exposure/stack-trace',
-      type: 'exposure',
-      data: JSON.stringify({ framework: 'Express.js', statusCode: 500 }),
-    },
-    {
-      title: 'JWT Secret Weakness',
-      severity: 'high',
-      description: 'JWT tokens appear to be signed with a weak secret key. This could allow token forgery and authentication bypass.',
-      url: `https://${domain}/api/v1/auth/login`,
-      template: 'auth/jwt-weak-secret',
-      type: 'auth',
-      data: JSON.stringify({ algorithm: 'HS256', crackable: true }),
-    },
-    {
-      title: 'Directory Listing Enabled',
-      severity: 'low',
-      description: 'Directory listing is enabled on the /static/ directory, exposing file structure and potentially sensitive files.',
-      url: `https://${domain}/static/`,
-      template: 'misconfig/directory-listing',
-      type: 'misconfig',
-      data: JSON.stringify({ statusCode: 200, fileCount: 47 }),
-    },
-    {
-      title: 'Exposed Git Repository',
-      severity: 'critical',
-      description: 'A .git directory is publicly accessible, potentially exposing the entire source code repository.',
-      url: `https://${domain}/.git/config`,
-      template: 'exposure/git-directory',
-      type: 'exposure',
-      data: JSON.stringify({ statusCode: 200, repository: true }),
-    },
-    {
-      title: 'Server-Side Request Forgery (SSRF)',
-      severity: 'high',
-      description: 'The application fetches external URLs without validation, allowing SSRF attacks to access internal resources.',
-      url: `https://${domain}/api/v1/fetch?url=http://169.254.169.254/latest/meta-data/`,
-      template: 'vuln/ssrf',
-      type: 'injection',
-      data: JSON.stringify({ parameter: 'url', internalAccess: true }),
-    },
-    {
-      title: 'Rate Limiting Absent',
-      severity: 'medium',
-      description: 'No rate limiting is implemented on the authentication endpoint, allowing brute force attacks.',
-      url: `https://${domain}/api/v1/auth/login`,
-      template: 'misconfig/no-rate-limit',
-      type: 'misconfig',
-      data: JSON.stringify({ requestsPerSecond: 100, endpoint: '/api/v1/auth/login' }),
     },
     {
       title: 'Cookie Without Secure Flag',
@@ -306,6 +232,45 @@ function generateVulnerabilities(domain: string): Array<{
       data: JSON.stringify({ cookie: 'sessionid', secure: false, httpOnly: true }),
     },
     {
+      title: 'Directory Listing Enabled',
+      severity: 'low',
+      description: 'Directory listing is enabled on the /static/ directory, exposing file structure and potentially sensitive files.',
+      url: `https://${domain}/static/`,
+      template: 'misconfig/directory-listing',
+      type: 'misconfig',
+      data: JSON.stringify({ statusCode: 200, fileCount: 47 }),
+    },
+  ];
+
+  const mediumVulns = [
+    {
+      title: 'CORS Misconfiguration',
+      severity: 'medium',
+      description: 'The server returns a wildcard Access-Control-Allow-Origin header, allowing any origin to access the API.',
+      url: `https://${domain}/api/v1/users`,
+      template: 'misconfig/cors-wildcard',
+      type: 'misconfig',
+      data: JSON.stringify({ header: 'Access-Control-Allow-Origin: *', statusCode: 200 }),
+    },
+    {
+      title: 'Information Disclosure - Stack Trace',
+      severity: 'medium',
+      description: 'The application exposes detailed stack trace information in error responses, revealing internal paths and technology stack.',
+      url: `https://${domain}/api/v1/error`,
+      template: 'exposure/stack-trace',
+      type: 'exposure',
+      data: JSON.stringify({ framework: 'Express.js', statusCode: 500 }),
+    },
+    {
+      title: 'Missing Rate Limiting',
+      severity: 'medium',
+      description: 'No rate limiting is implemented on the authentication endpoint, allowing brute force attacks.',
+      url: `https://${domain}/api/v1/auth/login`,
+      template: 'misconfig/no-rate-limit',
+      type: 'misconfig',
+      data: JSON.stringify({ requestsPerSecond: 100, endpoint: '/api/v1/auth/login' }),
+    },
+    {
       title: 'GraphQL Introspection Enabled',
       severity: 'medium',
       description: 'GraphQL introspection is enabled on the production API, exposing the entire schema and potential sensitive types.',
@@ -315,20 +280,68 @@ function generateVulnerabilities(domain: string): Array<{
       data: JSON.stringify({ schemaTypes: 42, mutations: 15 }),
     },
     {
-      title: 'Default Credentials Detected',
-      severity: 'critical',
-      description: 'Default credentials were found to be active on the admin panel, allowing unauthorized access.',
-      url: `https://${domain}/admin`,
-      template: 'auth/default-credentials',
-      type: 'auth',
-      data: JSON.stringify({ username: 'admin', password: 'admin' }),
+      title: 'Open Redirect',
+      severity: 'medium',
+      description: 'An open redirect vulnerability allows redirection to arbitrary external URLs via the redirect parameter.',
+      url: `https://${domain}/auth/callback?redirect=https://evil.com`,
+      template: 'vuln/open-redirect',
+      type: 'injection',
+      data: JSON.stringify({ parameter: 'redirect', payload: 'https://evil.com' }),
     },
   ];
 
-  // Pick a subset of vulnerabilities
-  const selected = pickN(vulnTemplates, 4, 8);
-  vulns.push(...selected);
-  return vulns;
+  // High severity — very rare, only two types
+  const highVulns = [
+    {
+      title: 'Reflected XSS',
+      severity: 'high',
+      description: 'A reflected cross-site scripting vulnerability was found in the search parameter. User input is reflected without proper sanitization.',
+      url: `https://${domain}/search?q=%3Cscript%3Ealert(1)%3C/script%3E`,
+      template: 'vuln/reflected-xss',
+      type: 'injection',
+      data: JSON.stringify({ parameter: 'q', payload: '<script>alert(1)</script>' }),
+    },
+    {
+      title: 'JWT Secret Weakness',
+      severity: 'high',
+      description: 'JWT tokens appear to be signed with a weak secret key. This could allow token forgery and authentication bypass.',
+      url: `https://${domain}/api/v1/auth/login`,
+      template: 'auth/jwt-weak-secret',
+      type: 'auth',
+      data: JSON.stringify({ algorithm: 'HS256', crackable: true }),
+    },
+  ];
+
+  // Weighted selection: 60% chance of 0-1 vulns, 30% chance of 2 vulns, 10% chance of 3 vulns
+  const roll = Math.random();
+  let vulnCount: number;
+  if (roll < 0.60) {
+    vulnCount = Math.random() < 0.5 ? 0 : 1; // 60% → 0 or 1
+  } else if (roll < 0.90) {
+    vulnCount = 2; // 30% → 2
+  } else {
+    vulnCount = 3; // 10% → 3
+  }
+
+  // Weight towards low/medium severity: 50% low, 35% medium, 15% high
+  for (let i = 0; i < vulnCount; i++) {
+    const severityRoll = Math.random();
+    if (severityRoll < 0.50) {
+      vulns.push(pick(lowVulns));
+    } else if (severityRoll < 0.85) {
+      vulns.push(pick(mediumVulns));
+    } else {
+      vulns.push(pick(highVulns));
+    }
+  }
+
+  // Deduplicate by title
+  const seen = new Set<string>();
+  return vulns.filter(v => {
+    if (seen.has(v.title)) return false;
+    seen.add(v.title);
+    return true;
+  });
 }
 
 function generateFindings(domain: string): Array<{
@@ -338,25 +351,23 @@ function generateFindings(domain: string): Array<{
     category: string; severity: string; url: string; title: string; data: string;
   }> = [];
 
+  // Realistic findings only — removed fake/unrealistic ones
+  // Removed: "cloud_leak" (Public S3 Bucket), "AWS Access Key in JavaScript",
+  // "Private API Key Exposed", "Environment File Accessible" (.env), "WordPress Admin Panel" (defaultCreds)
   const findingTemplates = [
     { category: 'subdomain', severity: 'info', url: `https://staging.${domain}`, title: 'Staging Environment Detected', data: JSON.stringify({ source: 'crt.sh' }) },
     { category: 'subdomain', severity: 'info', url: `https://dev.${domain}`, title: 'Development Subdomain Found', data: JSON.stringify({ source: 'subfinder' }) },
     { category: 'js_file', severity: 'low', url: `https://${domain}/static/js/config.js`, title: 'Configuration File in JavaScript', data: JSON.stringify({ size: '12KB' }) },
-    { category: 'js_file', severity: 'medium', url: `https://${domain}/static/js/api.js`, title: 'API Key in JavaScript Source', data: JSON.stringify({ keyType: 'google_maps' }) },
     { category: 'api', severity: 'info', url: `https://${domain}/api/v1/docs`, title: 'API Documentation Exposed', data: JSON.stringify({ framework: 'Swagger' }) },
-    { category: 'api', severity: 'medium', url: `https://${domain}/api/graphql`, title: 'GraphQL Endpoint Discovered', data: JSON.stringify({ introspection: true }) },
-    { category: 'sensitive_file', severity: 'high', url: `https://${domain}/.env`, title: 'Environment File Accessible', data: JSON.stringify({ size: '2.4KB' }) },
-    { category: 'sensitive_file', severity: 'medium', url: `https://${domain}/robots.txt`, title: 'Interesting Disallow Entries', data: JSON.stringify({ disallowed: ['/admin', '/backup', '/api/v2'] }) },
+    { category: 'api', severity: 'info', url: `https://${domain}/api/graphql`, title: 'GraphQL Endpoint Discovered', data: JSON.stringify({ introspection: false }) },
+    { category: 'sensitive_file', severity: 'info', url: `https://${domain}/robots.txt`, title: 'Interesting Disallow Entries', data: JSON.stringify({ disallowed: ['/admin', '/backup', '/api/v2'] }) },
     { category: 'login', severity: 'info', url: `https://${domain}/login`, title: 'Login Page Detected', data: JSON.stringify({ method: 'form' }) },
-    { category: 'admin', severity: 'medium', url: `https://${domain}/admin`, title: 'Admin Panel Discovered', data: JSON.stringify({ authRequired: true }) },
-    { category: 'admin', severity: 'high', url: `https://${domain}/wp-admin`, title: 'WordPress Admin Panel', data: JSON.stringify({ defaultCreds: true }) },
-    { category: 'idor', severity: 'high', url: `https://${domain}/api/v1/users/1`, title: 'Potential IDOR in User API', data: JSON.stringify({ parameter: 'id', sequential: true }) },
-    { category: 'secret', severity: 'critical', url: `https://${domain}/static/js/app.js`, title: 'AWS Access Key in JavaScript', data: JSON.stringify({ provider: 'AWS', keyPrefix: 'AKIA' }) },
-    { category: 'secret', severity: 'high', url: `https://${domain}/static/js/bundle.js`, title: 'Private API Key Exposed', data: JSON.stringify({ keyType: 'stripe_secret' }) },
-    { category: 'cloud_leak', severity: 'critical', url: `https://s3.amazonaws.com/${domain.replace(/\./g, '-')}-assets/`, title: 'Public S3 Bucket', data: JSON.stringify({ provider: 'AWS', service: 'S3' }) },
+    { category: 'admin', severity: 'info', url: `https://${domain}/admin`, title: 'Admin Panel Discovered', data: JSON.stringify({ authRequired: true }) },
+    { category: 'idor', severity: 'medium', url: `https://${domain}/api/v1/users/1`, title: 'Potential IDOR in User API', data: JSON.stringify({ parameter: 'id', sequential: true }) },
   ];
 
-  const selected = pickN(findingTemplates, 5, 10);
+  // Reduced from 5-10 to 2-5 findings
+  const selected = pickN(findingTemplates, 2, 5);
   findings.push(...selected);
   return findings;
 }
@@ -457,7 +468,8 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
         }
         case 'alive_detection': {
           const subs = await db.subdomain.findMany({ where: { projectId, alive: false } });
-          const aliveCount = Math.floor(subs.length * 0.7);
+          // Match the 60% alive probability from generateSubdomains
+          const aliveCount = Math.floor(subs.length * 0.6);
           const toUpdate = subs.slice(0, aliveCount);
           for (const sub of toUpdate) {
             await db.subdomain.update({
@@ -480,7 +492,6 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
         case 'param_extraction':
         case 'js_discovery':
         case 'api_discovery':
-        case 'sensitive_file_discovery':
         case 'login_admin_detect':
         case 'idor_detect':
         case 'hidden_params':
@@ -501,18 +512,50 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
           await addLog(scanId, 'success', `[${stage.displayName}] Discovered ${endpoints.length} endpoints`);
           break;
         }
-        case 'js_secret_discovery': {
-          const findings = generateFindings(primaryDomain).filter(f => f.category === 'secret' || f.category === 'js_file');
-          for (const finding of findings) {
-            await db.finding.create({
-              data: { scanId, ...finding },
-            });
-          }
-          resultsCount = findings.length;
-          if (findings.length > 0) {
-            await addLog(scanId, 'warn', `[${stage.displayName}] Found ${findings.length} potential secrets in JavaScript!`);
+        case 'sensitive_file_discovery': {
+          // 70% chance of 0 findings — most domains won't have exposed sensitive files
+          if (Math.random() < 0.70) {
+            resultsCount = 0;
+            await addLog(scanId, 'success', `[${stage.displayName}] No sensitive files discovered`);
           } else {
+            const endpoints = generateEndpoints(primaryDomain).filter(ep => ep.category === 'sensitive' && ep.statusCode === 200);
+            for (const ep of endpoints) {
+              const existing = await db.endpoint.findFirst({
+                where: { projectId, url: ep.url, method: ep.method },
+              });
+              if (!existing) {
+                await db.endpoint.create({
+                  data: { projectId, ...ep },
+                });
+              }
+            }
+            resultsCount = endpoints.length;
+            if (resultsCount > 0) {
+              await addLog(scanId, 'warn', `[${stage.displayName}] Found ${resultsCount} exposed sensitive files!`);
+            } else {
+              await addLog(scanId, 'success', `[${stage.displayName}] No sensitive files discovered`);
+            }
+          }
+          break;
+        }
+        case 'js_secret_discovery': {
+          // 80% chance of 0 findings — secrets in JS are rare
+          if (Math.random() < 0.80) {
+            resultsCount = 0;
             await addLog(scanId, 'success', `[${stage.displayName}] No secrets found in JavaScript files`);
+          } else {
+            const findings = generateFindings(primaryDomain).filter(f => f.category === 'js_file');
+            for (const finding of findings) {
+              await db.finding.create({
+                data: { scanId, ...finding },
+              });
+            }
+            resultsCount = findings.length;
+            if (findings.length > 0) {
+              await addLog(scanId, 'warn', `[${stage.displayName}] Found ${findings.length} potential secrets in JavaScript!`);
+            } else {
+              await addLog(scanId, 'success', `[${stage.displayName}] No secrets found in JavaScript files`);
+            }
           }
           break;
         }
@@ -529,7 +572,12 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
           break;
         }
         case 'vuln_scanning': {
-          const vulns = generateVulnerabilities(primaryDomain);
+          // Limit to 0-2 vulns (generateVulnerabilities already returns 0-3,
+          // but we cap here to 0-2 for the vuln_scanning stage specifically)
+          let vulns = generateVulnerabilities(primaryDomain);
+          if (vulns.length > 2) {
+            vulns = vulns.slice(0, 2);
+          }
           for (const vuln of vulns) {
             await db.vulnerability.create({
               data: { projectId, ...vuln },
@@ -546,7 +594,11 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
             });
           }
           resultsCount = vulns.length;
-          await addLog(scanId, 'warn', `[${stage.displayName}] Found ${vulns.length} vulnerabilities!`);
+          if (vulns.length > 0) {
+            await addLog(scanId, 'warn', `[${stage.displayName}] Found ${vulns.length} vulnerabilities!`);
+          } else {
+            await addLog(scanId, 'success', `[${stage.displayName}] No vulnerabilities detected`);
+          }
           break;
         }
         case 'bypass_403': {
@@ -608,7 +660,8 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
   }
 
   // Also add general findings that aren't tied to specific stages
-  const generalFindings = generateFindings(primaryDomain).filter(f => f.category !== 'secret');
+  // Filter out secrets since those are handled by js_secret_discovery stage
+  const generalFindings = generateFindings(primaryDomain).filter(f => f.category !== 'secret' && f.category !== 'js_file');
   for (const finding of generalFindings) {
     await db.finding.create({
       data: { scanId, ...finding },

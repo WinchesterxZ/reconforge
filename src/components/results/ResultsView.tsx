@@ -7,9 +7,10 @@ import type { Subdomain, Endpoint } from '@/lib/types';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, Globe, Link, Code, Shield, Lock, Key, Server } from 'lucide-react';
+import { Download, Globe, Link, Code, Shield, Lock, Key, Server, Target } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAppStore } from '@/lib/store';
 
 const tabs = [
   { key: 'all', label: 'All', icon: <Globe className="h-3.5 w-3.5" /> },
@@ -32,14 +33,23 @@ export function ResultsView() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const selectedProjectId = useAppStore((s) => s.selectedProjectId);
 
   const fetchData = useCallback(async () => {
+    if (!selectedProjectId) {
+      setLoading(false);
+      setSubdomains([]);
+      setEndpoints([]);
+      return;
+    }
+
+    setLoading(true);
     try {
       const [subRes, epRes] = await Promise.all([
-        fetch('/api/subdomains'),
-        fetch('/api/endpoints'),
+        fetch(`/api/subdomains?projectId=${selectedProjectId}`),
+        fetch(`/api/endpoints?projectId=${selectedProjectId}`),
       ]);
-      
+
       if (subRes.ok) {
         const subData = await subRes.json();
         const mapped: Subdomain[] = (subData.subdomains || []).map((s: Record<string, unknown>) => ({
@@ -82,11 +92,33 @@ export function ResultsView() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, selectedProjectId]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Tab counts based on raw data (pre-filter)
+  const tabCounts = useMemo(() => {
+    const subCount = subdomains.length;
+    const epCount = endpoints.length;
+    const jsCount = endpoints.filter((e) => e.category === 'js').length;
+    const apiCount = endpoints.filter((e) => e.category === 'api').length;
+    const sensitiveCount = endpoints.filter((e) => e.category === 'sensitive').length;
+    const loginCount = endpoints.filter((e) => e.category === 'login' || e.category === 'admin').length;
+    const idorCount = endpoints.filter((e) => e.category === 'idor').length;
+
+    return {
+      all: subCount + epCount,
+      subdomains: subCount,
+      endpoints: epCount,
+      js: jsCount,
+      api: apiCount,
+      sensitive: sensitiveCount,
+      login: loginCount,
+      idor: idorCount,
+    };
+  }, [subdomains, endpoints]);
 
   const filteredSubdomains = useMemo(() => {
     let result = subdomains;
@@ -152,12 +184,98 @@ export function ResultsView() {
     setMethod('all');
   };
 
-  const handleExport = () => {
+  const handleExport = useCallback(() => {
+    // Determine which data to export based on active tab
+    let csvContent = '';
+    const headerArray: string[] = [];
+    const rowArrays: string[][] = [];
+
+    if (activeTab === 'subdomains') {
+      headerArray.push('Domain', 'IP', 'Status', 'Alive', 'Web Server', 'Title');
+      for (const s of filteredSubdomains) {
+        rowArrays.push([
+          s.domain,
+          s.ip || '',
+          s.statusCode?.toString() || '',
+          s.alive ? 'Yes' : 'No',
+          s.webServer || '',
+          s.title || '',
+        ]);
+      }
+    } else if (activeTab === 'endpoints' || activeTab === 'js' || activeTab === 'api' || activeTab === 'sensitive' || activeTab === 'login' || activeTab === 'idor') {
+      headerArray.push('URL', 'Method', 'Status', 'Category', 'Content-Type');
+      for (const e of filteredEndpoints) {
+        rowArrays.push([
+          e.url,
+          e.method,
+          e.statusCode?.toString() || '',
+          e.category,
+          e.contentType || '',
+        ]);
+      }
+    } else {
+      // 'all' tab - export both subdomains and endpoints
+      headerArray.push('Type', 'URL/Domain', 'Method', 'Status', 'Category', 'Content-Type');
+      for (const s of filteredSubdomains) {
+        rowArrays.push([
+          'Subdomain',
+          s.domain,
+          '',
+          s.statusCode?.toString() || '',
+          '',
+          '',
+        ]);
+      }
+      for (const e of filteredEndpoints) {
+        rowArrays.push([
+          'Endpoint',
+          e.url,
+          e.method,
+          e.statusCode?.toString() || '',
+          e.category,
+          e.contentType || '',
+        ]);
+      }
+    }
+
+    // Build CSV string with proper escaping
+    const escapeCsvField = (field: string) => {
+      if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    };
+
+    csvContent = [
+      headerArray.map(escapeCsvField).join(','),
+      ...rowArrays.map((row) => row.map(escapeCsvField).join(',')),
+    ].join('\n');
+
+    if (rowArrays.length === 0) {
+      toast({
+        title: 'No Data',
+        description: 'No results to export.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Create blob and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `reconforge-${activeTab}-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
     toast({
-      title: 'Export Started',
-      description: 'Generating export file...',
+      title: 'Export Complete',
+      description: `Exported ${rowArrays.length} rows as CSV.`,
     });
-  };
+  }, [activeTab, filteredSubdomains, filteredEndpoints, toast]);
 
   const totalCount =
     activeTab === 'subdomains'
@@ -189,6 +307,41 @@ export function ResultsView() {
     );
   }
 
+  // No project selected state
+  if (!selectedProjectId) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Results Explorer</h2>
+            <p className="text-sm text-muted-foreground">
+              Browse discovered subdomains, endpoints, and assets
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            disabled
+            className="border-border text-foreground hover:bg-accent gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
+        </div>
+        <Card className="border-border bg-card">
+          <CardContent className="flex flex-col items-center justify-center py-20 text-center">
+            <Target className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <p className="text-muted-foreground text-sm font-medium">
+              Select a target from the sidebar to view results
+            </p>
+            <p className="text-muted-foreground/70 text-xs mt-1">
+              Results will appear here once a project is selected
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -212,16 +365,24 @@ export function ResultsView() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-card border border-border h-auto p-1 flex-wrap">
-          {tabs.map((tab) => (
-            <TabsTrigger
-              key={tab.key}
-              value={tab.key}
-              className="text-xs gap-1.5 data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
-            >
-              {tab.icon}
-              <span className="hidden sm:inline">{tab.label}</span>
-            </TabsTrigger>
-          ))}
+          {tabs.map((tab) => {
+            const count = tabCounts[tab.key as keyof typeof tabCounts];
+            return (
+              <TabsTrigger
+                key={tab.key}
+                value={tab.key}
+                className="text-xs gap-1.5 data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
+              >
+                {tab.icon}
+                <span className="hidden sm:inline">{tab.label}</span>
+                {count > 0 && (
+                  <span className="ml-0.5 text-[10px] tabular-nums opacity-70">
+                    ({count})
+                  </span>
+                )}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
         <div className="mt-4 space-y-4">

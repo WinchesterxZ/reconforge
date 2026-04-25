@@ -377,7 +377,7 @@ export function ScansView() {
             {/* Stage Detail + Live Logs */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <StageDetail stage={selectedStage} />
-              <LiveLogs scanId={selectedScan.id} />
+              <LiveLogs scanId={selectedScan.id} status={selectedScan.status} />
             </div>
 
             {/* Stages Table */}

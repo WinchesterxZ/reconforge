@@ -1,17 +1,24 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import type { LogEntry } from '@/lib/types';
-import { getMockLogs } from '@/lib/api';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import type { LogEntry, ScanStatus } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Terminal, Trash2 } from 'lucide-react';
+import { Terminal, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface LiveLogsProps {
   scanId: string;
-  logs?: LogEntry[];
+  status?: ScanStatus;
+}
+
+interface ApiLog {
+  id: string;
+  scanId: string;
+  level: string;
+  message: string;
+  timestamp: string;
 }
 
 const levelColors: Record<string, string> = {
@@ -30,40 +37,83 @@ const levelBadges: Record<string, string> = {
   success: 'bg-emerald-500/20 text-emerald-400',
 };
 
-export function LiveLogs({ scanId, logs: propLogs }: LiveLogsProps) {
-  const [logs, setLogs] = useState<LogEntry[]>(() => propLogs || getMockLogs());
+/** Extract stage name from a message like "[subdomain_enum] Starting..." */
+function extractStage(message: string): string {
+  const match = message.match(/^\[([^\]]+)\]/);
+  return match ? match[1] : '';
+}
+
+function mapApiLogToEntry(log: ApiLog): LogEntry {
+  return {
+    id: log.id,
+    timestamp: log.timestamp,
+    level: log.level as LogEntry['level'],
+    stage: extractStage(log.message),
+    message: log.message,
+  };
+}
+
+export function LiveLogs({ scanId, status }: LiveLogsProps) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastFetchedRef = useRef<string | null>(null);
 
-  // Simulate new log entries arriving
-  useEffect(() => {
-    const timer = setInterval(() => {
+  const fetchLogs = useCallback(async () => {
+    if (!scanId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/scans/${scanId}/logs?limit=50`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch logs (${res.status})`);
+      }
+      const data = await res.json();
+      // API returns logs in timestamp desc order; reverse for chronological display
+      const entries = (data.logs || []).map(mapApiLogToEntry).reverse();
       setLogs((prev) => {
-        if (prev.length > 50) return prev;
-        const newLog: LogEntry = {
-          id: `l-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          level: ['info', 'success', 'warn'][Math.floor(Math.random() * 3)] as LogEntry['level'],
-          stage: 'js_analysis',
-          message: [
-            'Processing JavaScript file...',
-            'Analyzing API endpoints...',
-            'Checking parameter values...',
-            'Evaluating response headers...',
-            'Testing for common misconfigurations...',
-          ][Math.floor(Math.random() * 5)],
-        };
-        return [...prev, newLog];
+        // Deduplicate: only append entries we haven't seen yet
+        const existingIds = new Set(prev.map((l) => l.id));
+        const newEntries = entries.filter((e: LogEntry) => !existingIds.has(e.id));
+        // Keep chronological order — existing logs first, then new ones appended
+        return [...prev, ...newEntries];
       });
-    }, 3000);
+      // Track the newest log id so we can detect gaps
+      if (entries.length > 0) {
+        lastFetchedRef.current = entries[entries.length - 1].id;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch logs');
+    } finally {
+      setLoading(false);
+    }
+  }, [scanId]);
 
-    return () => clearInterval(timer);
-  }, []);
+  // Initial fetch and re-fetch when scanId changes
+  useEffect(() => {
+    setLogs([]);
+    lastFetchedRef.current = null;
+    fetchLogs();
+  }, [fetchLogs]);
 
+  // Poll every 5 seconds while scan is running or pending
+  useEffect(() => {
+    const isPollingStatus = status === 'running' || status === 'pending';
+    if (!isPollingStatus) return;
+
+    const interval = setInterval(fetchLogs, 5000);
+    return () => clearInterval(interval);
+  }, [status, fetchLogs]);
+
+  // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [logs]);
+
+  const isPollingStatus = status === 'running' || status === 'pending';
 
   return (
     <Card className="border-border bg-card">
@@ -72,6 +122,9 @@ export function LiveLogs({ scanId, logs: propLogs }: LiveLogsProps) {
           <CardTitle className="text-sm font-medium text-foreground flex items-center gap-2">
             <Terminal className="h-4 w-4 text-primary" />
             Live Logs
+            {isPollingStatus && (
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            )}
           </CardTitle>
           <Button
             variant="ghost"
@@ -89,11 +142,23 @@ export function LiveLogs({ scanId, logs: propLogs }: LiveLogsProps) {
           ref={scrollRef}
           className="h-64 overflow-y-auto rounded-md bg-[#0a0a0f] p-3 border border-border"
         >
-          {logs.length === 0 ? (
+          {error && (
+            <div className="text-red-400 text-xs text-center py-4">
+              {error}
+            </div>
+          )}
+          {!error && logs.length === 0 && loading && (
+            <div className="text-muted-foreground text-xs text-center py-8 flex items-center justify-center gap-2">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading logs...
+            </div>
+          )}
+          {!error && logs.length === 0 && !loading && (
             <div className="text-muted-foreground text-xs text-center py-8">
               Waiting for logs...
             </div>
-          ) : (
+          )}
+          {logs.length > 0 && (
             <div className="space-y-0.5 terminal-text text-xs">
               {logs.map((log) => (
                 <div key={log.id} className="flex items-start gap-2 py-0.5 hover:bg-white/[0.02] px-1 rounded">
@@ -114,9 +179,11 @@ export function LiveLogs({ scanId, logs: propLogs }: LiveLogsProps) {
                   >
                     {log.level.toUpperCase()}
                   </Badge>
-                  <span className="text-primary/70 shrink-0 w-28 truncate">
-                    [{log.stage}]
-                  </span>
+                  {log.stage && (
+                    <span className="text-primary/70 shrink-0 w-28 truncate">
+                      [{log.stage}]
+                    </span>
+                  )}
                   <span className={cn('flex-1', levelColors[log.level])}>
                     {log.message}
                   </span>

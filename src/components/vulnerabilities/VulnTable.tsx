@@ -52,6 +52,14 @@ const severityDotColors: Record<string, string> = {
   info: 'bg-gray-400',
 };
 
+const categoryColors: Record<string, string> = {
+  exposure: 'bg-red-500/20 text-red-400 border-red-500/30',
+  misconfig: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  injection: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  auth: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  default: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+};
+
 const statusIcons: Record<string, React.ReactNode> = {
   open: <AlertTriangle className="h-3 w-3 text-amber-400" />,
   confirmed: <CheckCircle2 className="h-3 w-3 text-emerald-400" />,
@@ -68,12 +76,36 @@ const statusLabels: Record<string, string> = {
   accepted: 'Accepted',
 };
 
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHour < 24) return `${diffHour}h ago`;
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function extractPath(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname + (parsed.search ? parsed.search : '');
+  } catch {
+    return url;
+  }
+}
+
 export function VulnTable({ vulnerabilities, onStatusChange }: VulnTableProps) {
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
 
   return (
     <>
-      <ScrollArea className="max-h-[500px]">
+      <ScrollArea className="max-h-[600px]">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-card z-10">
             <tr className="border-b border-border">
@@ -95,7 +127,7 @@ export function VulnTable({ vulnerabilities, onStatusChange }: VulnTableProps) {
                 <td className="py-2 px-3">
                   <div className="flex items-center gap-2">
                     <div className={cn('w-2 h-2 rounded-full shrink-0', severityDotColors[vuln.severity])} />
-                    <span className="text-foreground font-medium truncate max-w-48">
+                    <span className="text-foreground font-medium truncate max-w-56">
                       {vuln.title}
                     </span>
                   </div>
@@ -109,19 +141,32 @@ export function VulnTable({ vulnerabilities, onStatusChange }: VulnTableProps) {
                   </Badge>
                 </td>
                 <td className="py-2 px-3">
-                  <span className="terminal-text text-muted-foreground truncate block max-w-40">
-                    {vuln.url}
+                  <span
+                    className="terminal-text text-muted-foreground truncate block max-w-40"
+                    title={vuln.url}
+                  >
+                    {extractPath(vuln.url)}
                   </span>
                 </td>
-                <td className="py-2 px-3 text-muted-foreground">{vuln.type}</td>
+                <td className="py-2 px-3">
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'text-[10px] px-1.5 py-0 h-4',
+                      categoryColors[vuln.type] || categoryColors.default
+                    )}
+                  >
+                    {vuln.type}
+                  </Badge>
+                </td>
                 <td className="py-2 px-3">
                   <div className="flex items-center gap-1.5">
                     {statusIcons[vuln.status]}
                     <span className="text-muted-foreground">{statusLabels[vuln.status]}</span>
                   </div>
                 </td>
-                <td className="py-2 px-3 text-muted-foreground">
-                  {new Date(vuln.discoveredAt).toLocaleDateString()}
+                <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                  {formatRelativeTime(vuln.discoveredAt)}
                 </td>
               </tr>
             ))}
@@ -152,7 +197,13 @@ export function VulnTable({ vulnerabilities, onStatusChange }: VulnTableProps) {
                 >
                   {selectedVuln.severity.toUpperCase()}
                 </Badge>
-                <Badge variant="outline" className="text-xs px-2 py-0.5 border-border text-foreground">
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-xs px-2 py-0.5',
+                    categoryColors[selectedVuln.type] || categoryColors.default
+                  )}
+                >
                   {selectedVuln.type}
                 </Badge>
                 {selectedVuln.cwe && (
@@ -216,15 +267,23 @@ export function VulnTable({ vulnerabilities, onStatusChange }: VulnTableProps) {
               {/* Evidence */}
               <div>
                 <h4 className="text-xs font-medium text-muted-foreground mb-1">Evidence</h4>
-                <div className="bg-[#0a0a0f] border border-border rounded-md p-3">
-                  <code className="text-xs terminal-text text-amber-400">{selectedVuln.evidence}</code>
-                </div>
+                {selectedVuln.evidence ? (
+                  <div className="bg-[#0a0a0f] border border-border rounded-md p-3">
+                    <code className="text-xs terminal-text text-amber-400">{selectedVuln.evidence}</code>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No evidence captured</p>
+                )}
               </div>
 
               {/* Remediation */}
               <div>
                 <h4 className="text-xs font-medium text-muted-foreground mb-1">Remediation</h4>
-                <p className="text-sm text-foreground leading-relaxed">{selectedVuln.remediation}</p>
+                {selectedVuln.remediation ? (
+                  <p className="text-sm text-foreground leading-relaxed">{selectedVuln.remediation}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No remediation steps available</p>
+                )}
               </div>
 
               {/* Dates */}
