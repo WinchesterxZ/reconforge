@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { PipelineStages } from './PipelineStages';
 import { LiveLogs } from './LiveLogs';
 import { StageDetail } from './StageDetail';
@@ -171,11 +171,13 @@ function mapApiScan(apiScan: ApiScan): Scan {
 }
 
 export function ScansView() {
-  const { selectedScanId, selectScan, selectedProjectId } = useAppStore();
+  const { selectedScanId, selectScan, selectedProjectId, setView } = useAppStore();
   const [scans, setScans] = useState<Scan[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const { toast } = useToast();
+  const prevScanStatusRef = useRef<Record<string, string>>({});
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchScans = useCallback(async () => {
     try {
@@ -222,11 +224,50 @@ export function ScansView() {
       });
       if (!res.ok) throw new Error('Failed to start scan');
       toast({ title: 'Scan Started', description: 'New reconnaissance scan has been initiated.' });
-      fetchScans();
+      await fetchScans();
     } catch {
       toast({ title: 'Error', description: 'Failed to start scan', variant: 'destructive' });
     }
   };
+
+  // Poll scans every 5s when there's a running scan
+  const hasRunningScan = scans.some((s) => s.status === 'running' || s.status === 'pending');
+  useEffect(() => {
+    if (hasRunningScan) {
+      pollingRef.current = setInterval(fetchScans, 5000);
+    } else if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [hasRunningScan, fetchScans]);
+
+  // Auto-navigate to results when a scan completes
+  useEffect(() => {
+    for (const scan of scans) {
+      const prevStatus = prevScanStatusRef.current[scan.id];
+      if (prevStatus === 'running' && scan.status === 'completed') {
+        toast({
+          title: 'Scan Completed',
+          description: `Scan for ${scan.projectName} finished. Viewing results...`,
+        });
+        // Navigate to results view after a brief delay
+        setTimeout(() => setView('results'), 1500);
+      } else if (prevStatus === 'running' && scan.status === 'failed') {
+        toast({
+          title: 'Scan Failed',
+          description: `Scan for ${scan.projectName} encountered an error.`,
+          variant: 'destructive',
+        });
+      }
+      prevScanStatusRef.current[scan.id] = scan.status;
+    }
+  }, [scans, toast, setView]);
 
   const selectedScan = scans.find((s) => s.id === (selectedScanId || scans[0]?.id));
   const selectedStage = selectedScan?.stages.find((s) => s.id === selectedStageId) || null;

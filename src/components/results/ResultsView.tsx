@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { ResultsTable } from './ResultsTable';
 import { ResultFilters } from './ResultFilters';
 import type { Subdomain, Endpoint } from '@/lib/types';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, Globe, Link, Code, Shield, Lock, Key, Server, Target } from 'lucide-react';
+import { Download, Globe, Link, Code, Shield, Lock, Key, Server, Target, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppStore } from '@/lib/store';
@@ -18,6 +18,7 @@ const tabs = [
   { key: 'endpoints', label: 'Endpoints', icon: <Link className="h-3.5 w-3.5" /> },
   { key: 'js', label: 'JS Files', icon: <Code className="h-3.5 w-3.5" /> },
   { key: 'api', label: 'APIs', icon: <Shield className="h-3.5 w-3.5" /> },
+  { key: 'interesting', label: 'Interesting', icon: <Target className="h-3.5 w-3.5" /> },
   { key: 'sensitive', label: 'Sensitive', icon: <Lock className="h-3.5 w-3.5" /> },
   { key: 'login', label: 'Login/Admin', icon: <Key className="h-3.5 w-3.5" /> },
   { key: 'idor', label: 'IDOR', icon: <Shield className="h-3.5 w-3.5" /> },
@@ -32,8 +33,10 @@ export function ResultsView() {
   const [subdomains, setSubdomains] = useState<Subdomain[]>([]);
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isScanRunning, setIsScanRunning] = useState(false);
   const { toast } = useToast();
   const selectedProjectId = useAppStore((s) => s.selectedProjectId);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!selectedProjectId) {
@@ -98,12 +101,48 @@ export function ResultsView() {
     fetchData();
   }, [fetchData]);
 
+  // Check if there's an active scan for the selected project, and poll for results
+  const checkScanStatus = useCallback(async () => {
+    if (!selectedProjectId) return;
+    try {
+      const res = await fetch(`/api/scans?projectId=${selectedProjectId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const scans = data.scans || [];
+      const hasRunning = scans.some((s: { status: string }) => s.status === 'running' || s.status === 'pending');
+      setIsScanRunning(hasRunning);
+    } catch {
+      // ignore
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    checkScanStatus();
+  }, [checkScanStatus]);
+
+  // Poll for results every 5 seconds while a scan is running
+  useEffect(() => {
+    if (isScanRunning) {
+      pollingRef.current = setInterval(() => {
+        fetchData();
+        checkScanStatus();
+      }, 5000);
+    }
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [isScanRunning, fetchData, checkScanStatus]);
+
   // Tab counts based on raw data (pre-filter)
   const tabCounts = useMemo(() => {
     const subCount = subdomains.length;
     const epCount = endpoints.length;
     const jsCount = endpoints.filter((e) => e.category === 'js').length;
     const apiCount = endpoints.filter((e) => e.category === 'api').length;
+    const interestingCount = endpoints.filter((e) => e.category === 'interesting').length;
     const sensitiveCount = endpoints.filter((e) => e.category === 'sensitive').length;
     const loginCount = endpoints.filter((e) => e.category === 'login' || e.category === 'admin').length;
     const idorCount = endpoints.filter((e) => e.category === 'idor').length;
@@ -114,6 +153,7 @@ export function ResultsView() {
       endpoints: epCount,
       js: jsCount,
       api: apiCount,
+      interesting: interestingCount,
       sensitive: sensitiveCount,
       login: loginCount,
       idor: idorCount,
@@ -148,6 +188,8 @@ export function ResultsView() {
       result = result.filter((e) => e.category === 'js');
     } else if (activeTab === 'api') {
       result = result.filter((e) => e.category === 'api');
+    } else if (activeTab === 'interesting') {
+      result = result.filter((e) => e.category === 'interesting');
     } else if (activeTab === 'sensitive') {
       result = result.filter((e) => e.category === 'sensitive');
     } else if (activeTab === 'login') {
@@ -202,7 +244,7 @@ export function ResultsView() {
           s.title || '',
         ]);
       }
-    } else if (activeTab === 'endpoints' || activeTab === 'js' || activeTab === 'api' || activeTab === 'sensitive' || activeTab === 'login' || activeTab === 'idor') {
+    } else if (activeTab === 'endpoints' || activeTab === 'js' || activeTab === 'api' || activeTab === 'interesting' || activeTab === 'sensitive' || activeTab === 'login' || activeTab === 'idor') {
       headerArray.push('URL', 'Method', 'Status', 'Category', 'Content-Type');
       for (const e of filteredEndpoints) {
         rowArrays.push([
@@ -348,8 +390,12 @@ export function ResultsView() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Results Explorer</h2>
-          <p className="text-sm text-muted-foreground">
-            Browse discovered subdomains, endpoints, and assets
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
+            {isScanRunning ? (
+              <>Browse discovered subdomains, endpoints, and assets <Loader2 className="h-3 w-3 animate-spin text-blue-400" /> <span className="text-blue-400 font-medium">Live scanning...</span></>
+            ) : (
+              'Browse discovered subdomains, endpoints, and assets'
+            )}
           </p>
         </div>
         <Button
@@ -410,7 +456,7 @@ export function ResultsView() {
           {/* Results Table */}
           <Card className="border-border bg-card">
             <CardContent className="p-0">
-              {(activeTab === 'all' || activeTab === 'subdomains') && filteredSubdomains.length > 0 && activeTab !== 'js' && activeTab !== 'api' && activeTab !== 'sensitive' && activeTab !== 'login' && activeTab !== 'idor' && (
+              {(activeTab === 'all' || activeTab === 'subdomains') && filteredSubdomains.length > 0 && activeTab !== 'js' && activeTab !== 'api' && activeTab !== 'interesting' && activeTab !== 'sensitive' && activeTab !== 'login' && activeTab !== 'idor' && (
                 <div>
                   {activeTab === 'all' && (
                     <div className="px-4 py-2 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">

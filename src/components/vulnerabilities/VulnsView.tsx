@@ -24,6 +24,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/lib/store';
 
 const severitySummary = [
   { key: 'critical' as VulnSeverity, label: 'Critical', icon: <AlertOctagon className="h-4 w-4" />, color: 'text-red-400', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/20' },
@@ -41,10 +42,12 @@ export function VulnsView() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const { toast } = useToast();
+  const selectedProjectId = useAppStore((s) => s.selectedProjectId);
 
   const fetchVulns = useCallback(async () => {
     try {
-      const res = await fetch('/api/vulnerabilities');
+      const params = selectedProjectId ? `?projectId=${selectedProjectId}` : '';
+      const res = await fetch(`/api/vulnerabilities${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       const mapped: Vulnerability[] = (data.vulnerabilities || []).map((v: Record<string, unknown>) => ({
@@ -69,7 +72,7 @@ export function VulnsView() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, selectedProjectId]);
 
   useEffect(() => {
     fetchVulns();

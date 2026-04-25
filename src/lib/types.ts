@@ -101,6 +101,8 @@ export type EndpointCategory =
   | 'idor'
   | 'upload'
   | 'parameter'
+  | 'interesting'
+  | 'general'
   | 'other';
 
 // ---- Vulnerabilities ----

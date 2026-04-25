@@ -17,6 +17,9 @@ export async function GET(request: NextRequest) {
         project: {
           select: { id: true, name: true, domains: true },
         },
+        stages: {
+          orderBy: { order: 'asc' },
+        },
         _count: {
           select: { stages: true, findings: true, logs: true },
         },

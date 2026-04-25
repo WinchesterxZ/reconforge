@@ -33,8 +33,10 @@ const categories: { value: string; label: string }[] = [
   { value: 'login', label: 'Login' },
   { value: 'admin', label: 'Admin' },
   { value: 'idor', label: 'IDOR' },
+  { value: 'interesting', label: 'Interesting' },
   { value: 'upload', label: 'Upload' },
   { value: 'parameter', label: 'Parameter' },
+  { value: 'general', label: 'General' },
   { value: 'other', label: 'Other' },
 ];
 
