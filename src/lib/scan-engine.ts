@@ -27,10 +27,10 @@ export const SCAN_STAGES: StageDefinition[] = [
   { stageName: 'js_secret_discovery', displayName: 'JavaScript Secret Discovery', tools: ['mantra', 'jsecret', 'jsleak'], delay: 3 },
   { stageName: 'hidden_params', displayName: 'Hidden Parameters', tools: ['arjun', 'paraminer'], delay: 3 },
   { stageName: 'port_scanning', displayName: 'Port Scanning', tools: ['naabu', 'nmap'], delay: 4 },
-  { stageName: 'directory_fuzzing', displayName: 'Directory Fuzzing', tools: ['feroxbuster', 'ffuf', 'dirsearch'], delay: 4 },
+  { stageName: 'dir_fuzzing', displayName: 'Directory Fuzzing', tools: ['feroxbuster', 'ffuf', 'dirsearch'], delay: 4 },
   { stageName: 'api_fuzzing', displayName: 'API Endpoint Fuzzing', tools: ['kiterunner'], delay: 3 },
   { stageName: 'vuln_scanning', displayName: 'Vulnerability Scanning', tools: ['nuclei'], delay: 5 },
-  { stageName: 'bypass_403', displayName: '403 Bypass Detection', tools: ['nuclei', 'byp4xx'], delay: 2 },
+  { stageName: '403_bypass', displayName: '403 Bypass Detection', tools: ['nuclei', 'byp4xx'], delay: 2 },
   { stageName: 'report_generation', displayName: 'Report Generation', tools: ['internal'], delay: 1 },
 ];
 
@@ -53,6 +53,97 @@ const TECH_STACKS = [
   ['Spring Boot', 'Java', 'PostgreSQL'], ['Rails', 'Ruby', 'PostgreSQL'], ['Gin', 'Go', 'CockroachDB'],
   ['Flask', 'Python', 'SQLite'], ['Angular', 'Node.js', 'AWS'], ['Svelte', 'Vite', 'Cloudflare Workers'],
 ];
+
+// ─── Soft 404 Detection Patterns ───────────────────────────────────────────────
+// These patterns simulate the response body analysis that a real scanner would perform
+// to detect pages that return HTTP 200 but are actually error/404 pages.
+
+const SOFT_404_PATTERNS: Array<{ pattern: string; framework: string }> = [
+  { pattern: '__next_error__', framework: 'Next.js' },
+  { pattern: '404: This page could not be found', framework: 'Next.js' },
+  { pattern: '<title>404 Not Found</title>', framework: 'Generic' },
+  { pattern: 'The page you were looking for doesn\'t exist', framework: 'Generic' },
+  { pattern: 'Page Not Found', framework: 'Generic' },
+  { pattern: 'Error 404', framework: 'Generic' },
+  { pattern: 'Oops! That page can\'t be found', framework: 'WordPress' },
+  { pattern: 'Nothing found for this request', framework: 'WordPress' },
+  { pattern: 'noscript>404', framework: 'Cloudflare' },
+  { pattern: 'nginx/0.0.0 404', framework: 'Nginx' },
+  { pattern: '<h1>404</h1>', framework: 'Generic' },
+  { pattern: 'Application error: a client-side exception has occurred', framework: 'Next.js' },
+];
+
+const SOFT_404_RESPONSE_SNIPPETS: Record<string, string[]> = {
+  'Next.js': [
+    '<!DOCTYPE html><html><head><style>...</style><script id="__next_error__">self.__next_f.push(...)</script><noscript>404: This page could not be found</noscript></head><body><div id="__next"></div></body></html>',
+  ],
+  'WordPress': [
+    '<!DOCTYPE html><html><head><title>Page not found &#8211; WordPress</title></head><body><div class="wp-block-query-no-results">Oops! That page can&#8217;t be found.</div></body></html>',
+  ],
+  'Cloudflare': [
+    '<!DOCTYPE html><html><head><title>404 Not Found</title><noscript><center>404</center></noscript></head></html>',
+  ],
+  'Generic': [
+    '<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>404</h1><p>The page you were looking for doesn\'t exist.</p></body></html>',
+  ],
+  'Nginx': [
+    '<html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>nginx</center></body></html>',
+  ],
+};
+
+/**
+ * Simulates soft 404 detection.
+ * In a real scanner, this would analyze the actual HTTP response body.
+ * Here we simulate the probability of a 200 response being a soft 404
+ * based on the endpoint category and path patterns.
+ *
+ * Returns { isSoft404, responseBody } where:
+ * - isSoft404: true if the endpoint is likely a soft 404
+ * - responseBody: a snippet of the response body containing the detection pattern
+ */
+function simulateSoft404Check(url: string, category: string, statusCode: number): { isSoft404: boolean; responseBody: string } {
+  // Only check 200 responses — other status codes are already correctly categorized
+  if (statusCode !== 200) {
+    return { isSoft404: false, responseBody: '' };
+  }
+
+  // Soft 404 probability varies by category:
+  // - Sensitive files, admin, and login paths have HIGH probability (40-60%)
+  // - Interesting paths have MODERATE probability (25-40%)
+  // - API endpoints have LOW probability (5-10%)
+  // - JS files have VERY LOW probability (2-5%)
+  const soft404Probabilities: Record<string, [number, number]> = {
+    sensitive: [0.40, 0.60],
+    admin: [0.35, 0.55],
+    login: [0.30, 0.50],
+    interesting: [0.25, 0.40],
+    api: [0.05, 0.10],
+    js: [0.02, 0.05],
+    general: [0.15, 0.30],
+    other: [0.10, 0.20],
+  };
+
+  const [minProb, maxProb] = soft404Probabilities[category] || [0.10, 0.20];
+  const probability = minProb + Math.random() * (maxProb - minProb);
+
+  // Additional boost for paths that commonly trigger soft 404s
+  const soft404HotPaths = ['.env', '.env.bak', '.git/config', '.htaccess', 'web.config',
+    'package.json', 'composer.json', 'wp-config.php.bak', 'backup.sql', 'dump.sql',
+    '/wp-admin', '/phpinfo.php', '/info.php', '/server-status', '/server-info',
+    '/.github/workflows/', '/jenkins/', '/debug/', '/elmah.axd'];
+  const isHotPath = soft404HotPaths.some(p => url.toLowerCase().includes(p.toLowerCase()));
+
+  const finalProbability = isHotPath ? Math.min(probability * 1.5, 0.85) : probability;
+
+  if (Math.random() < finalProbability) {
+    // Pick a random soft 404 pattern
+    const match = pick(SOFT_404_PATTERNS);
+    const snippet = pick(SOFT_404_RESPONSE_SNIPPETS[match.framework] || SOFT_404_RESPONSE_SNIPPETS['Generic']);
+    return { isSoft404: true, responseBody: snippet };
+  }
+
+  return { isSoft404: false, responseBody: '' };
+}
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -103,20 +194,25 @@ function generateSubdomains(domain: string): Array<{
 function generateEndpoints(domain: string): Array<{
   url: string; method: string; statusCode: number; contentType: string;
   contentLength: number; category: string; parameters: string; responseTime: number;
+  isSoft404: boolean; responseBody: string;
 }> {
   const endpoints: Array<{
     url: string; method: string; statusCode: number; contentType: string;
     contentLength: number; category: string; parameters: string; responseTime: number;
+    isSoft404: boolean; responseBody: string;
   }> = [];
 
   // JS files — reduced count
   const jsFiles = ['app.js', 'main.js', 'vendor.js', 'chunk.js', 'runtime.js', 'analytics.js', 'tracking.js', 'config.js', 'api.js', 'utils.js', 'bundle.min.js', 'polyfills.js'];
   for (const file of pickN(jsFiles, 2, 4)) {
+    const url = `https://${domain}/static/js/${file}`;
+    const soft404 = simulateSoft404Check(url, 'js', 200);
     endpoints.push({
-      url: `https://${domain}/static/js/${file}`,
+      url,
       method: 'GET', statusCode: 200, contentType: 'application/javascript',
       contentLength: Math.floor(Math.random() * 200000), category: 'js',
       parameters: '[]', responseTime: Math.floor(Math.random() * 300) + 20,
+      isSoft404: soft404.isSoft404, responseBody: soft404.responseBody,
     });
   }
 
@@ -132,11 +228,14 @@ function generateEndpoints(domain: string): Array<{
     // Most API endpoints return 200 or 404; 403/500 are less common
     const apiStatusRoll = Math.random();
     const apiStatus = apiStatusRoll < 0.45 ? 200 : apiStatusRoll < 0.70 ? 404 : apiStatusRoll < 0.85 ? 403 : randomStatusCode();
+    const url = `https://${domain}${path}`;
+    const soft404 = simulateSoft404Check(url, 'api', apiStatus);
     endpoints.push({
-      url: `https://${domain}${path}`,
+      url,
       method: pick(methods), statusCode: apiStatus, contentType: 'application/json',
       contentLength: Math.floor(Math.random() * 10000), category: 'api',
       parameters: params, responseTime: Math.floor(Math.random() * 500) + 30,
+      isSoft404: soft404.isSoft404, responseBody: soft404.responseBody,
     });
   }
 
@@ -147,11 +246,15 @@ function generateEndpoints(domain: string): Array<{
     // Login pages mostly return 200 or 302; 403 is possible but less common; 404 is most common for non-existent panels
     const authRoll = Math.random();
     const authStatus = authRoll < 0.35 ? 200 : authRoll < 0.55 ? 302 : authRoll < 0.80 ? 404 : 403;
+    const epCategory = path.includes('admin') || path.includes('panel') || path.includes('control') ? 'admin' : 'login';
+    const url = `https://${domain}${path}`;
+    const soft404 = simulateSoft404Check(url, epCategory, authStatus);
     endpoints.push({
-      url: `https://${domain}${path}`,
+      url,
       method: 'GET', statusCode: authStatus, contentType: 'text/html',
-      contentLength: Math.floor(Math.random() * 30000), category: path.includes('admin') || path.includes('panel') || path.includes('control') ? 'admin' : 'login',
+      contentLength: Math.floor(Math.random() * 30000), category: epCategory,
       parameters: '[]', responseTime: Math.floor(Math.random() * 400) + 50,
+      isSoft404: soft404.isSoft404, responseBody: soft404.responseBody,
     });
   }
 
@@ -175,11 +278,18 @@ function generateEndpoints(domain: string): Array<{
       sensitiveStatus = 200;
       sensitiveContentType = pick(['text/plain', 'application/json', 'text/xml', 'application/octet-stream']);
     }
+    const url = `https://${domain}/${file}`;
+    const soft404 = simulateSoft404Check(url, 'sensitive', sensitiveStatus);
+    // If soft 404 detected on a sensitive file, override status to 200 but mark it as soft 404
+    // This simulates the real scenario where servers return 200 for missing sensitive files
+    const finalStatus = soft404.isSoft404 && sensitiveStatus === 404 ? 200 : sensitiveStatus;
+    const finalContentType = soft404.isSoft404 && finalStatus === 200 ? 'text/html' : sensitiveContentType;
     endpoints.push({
-      url: `https://${domain}/${file}`,
-      method: 'GET', statusCode: sensitiveStatus, contentType: sensitiveContentType,
+      url,
+      method: 'GET', statusCode: finalStatus, contentType: finalContentType,
       contentLength: Math.floor(Math.random() * 5000), category: 'sensitive',
       parameters: '[]', responseTime: Math.floor(Math.random() * 200) + 10,
+      isSoft404: soft404.isSoft404, responseBody: soft404.responseBody,
     });
   }
 
@@ -189,11 +299,15 @@ function generateEndpoints(domain: string): Array<{
     '/debug/', '/trace', '/actuator/health', '/actuator/env',
     '/graphql', '/graphiql', '/elmah.axd', '/elmah'];
   for (const path of pickN(interestingPaths, 1, 3)) {
+    const url = `https://${domain}${path}`;
+    const status = randomStatusCode();
+    const soft404 = simulateSoft404Check(url, 'interesting', status);
     endpoints.push({
-      url: `https://${domain}${path}`,
-      method: 'GET', statusCode: randomStatusCode(), contentType: pick(['text/html', 'application/json']),
+      url,
+      method: 'GET', statusCode: status, contentType: pick(['text/html', 'application/json']),
       contentLength: Math.floor(Math.random() * 15000), category: 'interesting',
       parameters: '[]', responseTime: Math.floor(Math.random() * 300) + 20,
+      isSoft404: soft404.isSoft404, responseBody: soft404.responseBody,
     });
   }
 
@@ -498,6 +612,7 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
         case 'directory_fuzzing':
         case 'api_fuzzing': {
           const endpoints = generateEndpoints(primaryDomain);
+          const soft404Count = endpoints.filter(ep => ep.isSoft404).length;
           for (const ep of endpoints) {
             const existing = await db.endpoint.findFirst({
               where: { projectId, url: ep.url, method: ep.method },
@@ -510,6 +625,9 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
           }
           resultsCount = endpoints.length;
           await addLog(scanId, 'success', `[${stage.displayName}] Discovered ${endpoints.length} endpoints`);
+          if (soft404Count > 0) {
+            await addLog(scanId, 'warn', `[${stage.displayName}] ${soft404Count} endpoints flagged as soft 404 (HTTP 200 with error page content)`);
+          }
           break;
         }
         case 'sensitive_file_discovery': {
@@ -518,7 +636,7 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
             resultsCount = 0;
             await addLog(scanId, 'success', `[${stage.displayName}] No sensitive files discovered`);
           } else {
-            const endpoints = generateEndpoints(primaryDomain).filter(ep => ep.category === 'sensitive' && ep.statusCode === 200);
+            const endpoints = generateEndpoints(primaryDomain).filter(ep => ep.category === 'sensitive' && ep.statusCode === 200 && !ep.isSoft404);
             for (const ep of endpoints) {
               const existing = await db.endpoint.findFirst({
                 where: { projectId, url: ep.url, method: ep.method },
@@ -601,7 +719,7 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
           }
           break;
         }
-        case 'bypass_403': {
+        case '403_bypass': {
           resultsCount = Math.floor(Math.random() * 3);
           if (resultsCount > 0) {
             await addLog(scanId, 'warn', `[${stage.displayName}] Found ${resultsCount} potential 403 bypasses`);

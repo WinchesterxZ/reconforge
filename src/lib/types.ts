@@ -89,6 +89,8 @@ export interface Endpoint {
   contentLength: number | null;
   category: EndpointCategory;
   subdomain: string | null;
+  isSoft404: boolean;
+  responseBody: string;
   discoveredAt: string;
 }
 

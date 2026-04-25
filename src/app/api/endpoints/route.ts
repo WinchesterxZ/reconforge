@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const statusCode = searchParams.get('statusCode');
     const search = searchParams.get('search');
+    const soft404Only = searchParams.get('soft404') === 'true';
     const limit = parseInt(searchParams.get('limit') || '5000', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
     if (projectId) where.projectId = projectId;
     if (category) where.category = category;
     if (statusCode) where.statusCode = parseInt(statusCode, 10);
+    if (soft404Only) where.isSoft404 = true;
     if (search) {
       where.OR = [
         { url: { contains: search } },

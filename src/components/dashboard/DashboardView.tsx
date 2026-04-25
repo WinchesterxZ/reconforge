@@ -90,20 +90,20 @@ export function DashboardView() {
       // Map scans
       const mappedScans: Scan[] = apiScans.map((s: ApiScan) => {
         const stageNames = [
-          'subdomain_enum', 'dns_resolution', 'http_probing', 'web_screenshot',
-          'port_scan', 'service_detect', 'waf_detect', 'tech_detect',
-          'crawler', 'link_finding', 'js_analysis', 'api_discovery',
-          'dir_fuzz', 'param_mining', 'fuzz_params', 'sensitive_check',
-          'login_detect', 'idor_check', 'xss_scan', 'sqli_scan',
-          'ssrf_check', 'vuln_scan', 'report_gen',
+          'passive_subdomain_enum', 'active_subdomain_enum', 'subdomain_fuzzing', 'vhost_enum',
+          'infra_discovery', 'cert_transparency', 'merge_dedup', 'alive_detection',
+          'url_discovery', 'param_extraction', 'js_discovery', 'api_discovery',
+          'sensitive_file_discovery', 'login_admin_detect', 'idor_detect', 'js_secret_discovery',
+          'hidden_params', 'port_scanning', 'dir_fuzzing', 'api_fuzzing',
+          'vuln_scanning', '403_bypass', 'report_generation',
         ];
         const stageDisplayNames = [
-          'Subdomain Enum', 'DNS Resolution', 'HTTP Probing', 'Web Screenshot',
-          'Port Scanning', 'Service Detect', 'WAF Detection', 'Tech Detection',
-          'Web Crawling', 'Link Finding', 'JS Analysis', 'API Discovery',
-          'Dir Fuzzing', 'Param Mining', 'Param Fuzzing', 'Sensitive Check',
-          'Login Detect', 'IDOR Check', 'XSS Scanning', 'SQLi Scanning',
-          'SSRF Check', 'Vuln Scan', 'Report Gen',
+          'Passive Subdomain Enum', 'Active Subdomain Enum', 'Subdomain Fuzzing', 'VHost Enum',
+          'Infrastructure Discovery', 'Cert Transparency', 'Merge & Dedup', 'Alive Host Detection',
+          'URL Discovery', 'Param Extraction', 'JS Discovery', 'API Discovery',
+          'Sensitive File Discovery', 'Login/Admin Detection', 'IDOR Detection', 'JS Secret Discovery',
+          'Hidden Parameters', 'Port Scanning', 'Directory Fuzzing', 'API Fuzzing',
+          'Vuln Scanning', '403 Bypass', 'Report Generation',
         ];
 
         const stages = s.stages || stageNames.map((name, i) => {

@@ -7,10 +7,11 @@ import type { Subdomain, Endpoint } from '@/lib/types';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, Globe, Link, Code, Shield, Lock, Key, Server, Target, Loader2 } from 'lucide-react';
+import { Download, Globe, Link, Code, Shield, Lock, Key, Server, Target, Loader2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppStore } from '@/lib/store';
+import { cn } from '@/lib/utils';
 
 const tabs = [
   { key: 'all', label: 'All', icon: <Globe className="h-3.5 w-3.5" /> },
@@ -22,6 +23,7 @@ const tabs = [
   { key: 'sensitive', label: 'Sensitive', icon: <Lock className="h-3.5 w-3.5" /> },
   { key: 'login', label: 'Login/Admin', icon: <Key className="h-3.5 w-3.5" /> },
   { key: 'idor', label: 'IDOR', icon: <Shield className="h-3.5 w-3.5" /> },
+  { key: 'soft404', label: 'Soft 404', icon: <AlertTriangle className="h-3.5 w-3.5" /> },
 ];
 
 export function ResultsView() {
@@ -86,6 +88,8 @@ export function ResultsView() {
           contentLength: e.contentLength as number || null,
           category: e.category as Endpoint['category'],
           subdomain: null,
+          isSoft404: (e.isSoft404 as boolean) || false,
+          responseBody: (e.responseBody as string) || '',
           discoveredAt: e.createdAt as string,
         }));
         setEndpoints(mapped);
@@ -146,6 +150,7 @@ export function ResultsView() {
     const sensitiveCount = endpoints.filter((e) => e.category === 'sensitive').length;
     const loginCount = endpoints.filter((e) => e.category === 'login' || e.category === 'admin').length;
     const idorCount = endpoints.filter((e) => e.category === 'idor').length;
+    const soft404Count = endpoints.filter((e) => e.isSoft404).length;
 
     return {
       all: subCount + epCount,
@@ -157,6 +162,7 @@ export function ResultsView() {
       sensitive: sensitiveCount,
       login: loginCount,
       idor: idorCount,
+      soft404: soft404Count,
     };
   }, [subdomains, endpoints]);
 
@@ -196,6 +202,8 @@ export function ResultsView() {
       result = result.filter((e) => e.category === 'login' || e.category === 'admin');
     } else if (activeTab === 'idor') {
       result = result.filter((e) => e.category === 'idor');
+    } else if (activeTab === 'soft404') {
+      result = result.filter((e) => e.isSoft404);
     }
 
     if (search) {
@@ -244,8 +252,8 @@ export function ResultsView() {
           s.title || '',
         ]);
       }
-    } else if (activeTab === 'endpoints' || activeTab === 'js' || activeTab === 'api' || activeTab === 'interesting' || activeTab === 'sensitive' || activeTab === 'login' || activeTab === 'idor') {
-      headerArray.push('URL', 'Method', 'Status', 'Category', 'Content-Type');
+    } else if (activeTab === 'endpoints' || activeTab === 'js' || activeTab === 'api' || activeTab === 'interesting' || activeTab === 'sensitive' || activeTab === 'login' || activeTab === 'idor' || activeTab === 'soft404') {
+      headerArray.push('URL', 'Method', 'Status', 'Category', 'Content-Type', 'Soft 404');
       for (const e of filteredEndpoints) {
         rowArrays.push([
           e.url,
@@ -253,6 +261,7 @@ export function ResultsView() {
           e.statusCode?.toString() || '',
           e.category,
           e.contentType || '',
+          e.isSoft404 ? 'Yes' : 'No',
         ]);
       }
     } else {
@@ -422,7 +431,10 @@ export function ResultsView() {
                 {tab.icon}
                 <span className="hidden sm:inline">{tab.label}</span>
                 {count > 0 && (
-                  <span className="ml-0.5 text-[10px] tabular-nums opacity-70">
+                  <span className={cn(
+                    "ml-0.5 text-[10px] tabular-nums",
+                    tab.key === 'soft404' ? "text-amber-400 opacity-100 font-medium" : "opacity-70"
+                  )}>
                     ({count})
                   </span>
                 )}
@@ -456,7 +468,7 @@ export function ResultsView() {
           {/* Results Table */}
           <Card className="border-border bg-card">
             <CardContent className="p-0">
-              {(activeTab === 'all' || activeTab === 'subdomains') && filteredSubdomains.length > 0 && activeTab !== 'js' && activeTab !== 'api' && activeTab !== 'interesting' && activeTab !== 'sensitive' && activeTab !== 'login' && activeTab !== 'idor' && (
+              {(activeTab === 'all' || activeTab === 'subdomains') && filteredSubdomains.length > 0 && activeTab !== 'js' && activeTab !== 'api' && activeTab !== 'interesting' && activeTab !== 'sensitive' && activeTab !== 'login' && activeTab !== 'idor' && activeTab !== 'soft404' && (
                 <div>
                   {activeTab === 'all' && (
                     <div className="px-4 py-2 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">

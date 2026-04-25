@@ -154,6 +154,7 @@ export async function GET(request: NextRequest) {
       endpointBreakdown: {
         byCategory: endpointsByCategory,
         byStatusCode: statusCodeDistribution,
+        soft404Count: endpoints.filter(ep => ep.isSoft404).length,
       },
       findingsBreakdown: {
         byCategory: findingsByCategory,

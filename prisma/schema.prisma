@@ -98,19 +98,21 @@ model Subdomain {
 }
 
 model Endpoint {
-  id          String   @id @default(cuid())
-  projectId   String
-  url         String
-  method      String   @default("GET")
-  statusCode  Int      @default(0)
-  contentType String   @default("")
-  contentLength Int    @default(0)
-  category    String   @default("general") // js, api, backend, login, upload, admin, sensitive, idor, interesting, cloud_leak
-  parameters  String   @default("[]") // JSON array of parameter names
-  responseTime Int     @default(0)
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  projectId     String
+  url           String
+  method        String   @default("GET")
+  statusCode    Int      @default(0)
+  contentType   String   @default("")
+  contentLength Int      @default(0)
+  category      String   @default("general") // js, api, backend, login, upload, admin, sensitive, idor, interesting, cloud_leak
+  parameters    String   @default("[]") // JSON array of parameter names
+  responseTime  Int      @default(0)
+  isSoft404     Boolean  @default(false) // True if server returned 200 but body contains 404/error page content
+  responseBody  String   @default("") // Truncated response body snippet for soft 404 detection
+  createdAt     DateTime @default(now())
 
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Vulnerability {

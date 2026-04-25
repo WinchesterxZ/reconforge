@@ -28,6 +28,7 @@ import {
   X,
   Copy,
   CheckCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
@@ -70,8 +71,9 @@ function getCategoryColor(category: string): string {
   return categoryColors[category.toLowerCase()] || categoryColors['other'];
 }
 
-function statusCodeBadgeStyle(code: number | null): string {
+function statusCodeBadgeStyle(code: number | null, isSoft404?: boolean): string {
   if (!code) return 'text-muted-foreground';
+  if (isSoft404 && code >= 200 && code < 300) return 'bg-amber-500/15 text-amber-400';
   if (code >= 200 && code < 300) return 'bg-emerald-500/15 text-emerald-400';
   if (code >= 300 && code < 400) return 'bg-blue-500/15 text-blue-400';
   if (code >= 400 && code < 500) return 'bg-amber-500/15 text-amber-400';
@@ -190,7 +192,7 @@ function CopyUrlButton({ url }: { url: string }) {
 
 // ---- Status Code Badge ----
 
-function StatusCodeBadge({ code }: { code: number | null }) {
+function StatusCodeBadge({ code, isSoft404 }: { code: number | null; isSoft404?: boolean }) {
   if (!code) {
     return (
       <span className="text-muted-foreground text-xs">-</span>
@@ -202,14 +204,15 @@ function StatusCodeBadge({ code }: { code: number | null }) {
         <span
           className={cn(
             'inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] font-medium min-w-[2rem] text-center',
-            statusCodeBadgeStyle(code)
+            statusCodeBadgeStyle(code, isSoft404)
           )}
         >
           {code}
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">
-        {code >= 200 && code < 300 && 'Success'}
+        {isSoft404 && code >= 200 && code < 300 && 'Soft 404 - Server returned 200 but page is an error page'}
+        {!isSoft404 && code >= 200 && code < 300 && 'Success'}
         {code >= 300 && code < 400 && 'Redirect'}
         {code >= 400 && code < 500 && 'Client Error'}
         {code >= 500 && 'Server Error'}
@@ -265,7 +268,7 @@ export function ResultsTable({ data, type }: ResultsTableProps) {
                       <Globe className="h-3 w-3 text-emerald-400 shrink-0" />
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="terminal-text text-foreground truncate max-w-48 cursor-default">
+                          <span className="terminal-text text-foreground truncate max-w-52 cursor-default">
                             {sub.domain}
                           </span>
                         </TooltipTrigger>
@@ -454,7 +457,10 @@ export function ResultsTable({ data, type }: ResultsTableProps) {
               return (
                 <tr
                   key={ep.id}
-                  className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors"
+                  className={cn(
+                    'border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors',
+                    ep.isSoft404 && 'opacity-70'
+                  )}
                   onClick={() => setSelectedItem(ep)}
                 >
                   {/* URL Column */}
@@ -489,7 +495,22 @@ export function ResultsTable({ data, type }: ResultsTableProps) {
 
                   {/* Status Code Column */}
                   <td className="py-2 px-3">
-                    <StatusCodeBadge code={ep.statusCode} />
+                    <div className="flex items-center gap-1">
+                      <StatusCodeBadge code={ep.statusCode} isSoft404={ep.isSoft404} />
+                      {ep.isSoft404 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <div className="text-xs space-y-1">
+                              <p className="font-medium text-amber-400">Soft 404 Detected</p>
+                              <p className="text-muted-foreground">Server returned HTTP 200 but the response body contains error page patterns (e.g., Next.js __next_error__).</p>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                   </td>
 
                   {/* Category Column */}
@@ -591,7 +612,7 @@ export function ResultsTable({ data, type }: ResultsTableProps) {
                 <div>
                   <span className="text-xs text-muted-foreground">Status Code</span>
                   <div className="mt-0.5">
-                    <StatusCodeBadge code={(selectedItem as Endpoint).statusCode} />
+                  <StatusCodeBadge code={(selectedItem as Endpoint).statusCode} isSoft404={(selectedItem as Endpoint).isSoft404} />
                   </div>
                 </div>
                 <div>
@@ -624,6 +645,28 @@ export function ResultsTable({ data, type }: ResultsTableProps) {
                   <p className="terminal-text text-foreground mt-0.5">{(selectedItem as Endpoint).subdomain || 'N/A'}</p>
                 </div>
               </div>
+
+              {/* Soft 404 Warning */}
+              {(selectedItem as Endpoint).isSoft404 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                    <span className="text-sm font-medium text-amber-400">Soft 404 Detected</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    The server returned HTTP {(selectedItem as Endpoint).statusCode} (OK), but the response body contains error page patterns.
+                    This endpoint likely does not exist — the server serves a custom 404 error page with a 200 status code.
+                  </p>
+                  {(selectedItem as Endpoint).responseBody && (
+                    <div className="mt-2">
+                      <span className="text-xs text-muted-foreground">Response Body Snippet</span>
+                      <pre className="mt-1 p-2 rounded bg-muted/50 text-[10px] text-foreground overflow-x-auto max-h-24 terminal-text break-all">
+                        {(selectedItem as Endpoint).responseBody}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
