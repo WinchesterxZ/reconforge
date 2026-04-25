@@ -3,7 +3,7 @@ import { Server, Socket } from 'socket.io'
 import { Database } from 'bun:sqlite'
 
 // ─── Database Setup ────────────────────────────────────────────────
-const db = new Database('/home/z/my-project/db/custom.db')
+const db = new Database('/home/half-blood/reconforge/db/custom.db')
 
 // Enable WAL mode for better concurrent read performance
 db.exec('PRAGMA journal_mode=WAL;')
