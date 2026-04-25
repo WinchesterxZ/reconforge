@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  domains     String   // Comma-separated domains
+  headers     String   @default("{}") // JSON string for custom headers
+  status      String   @default("active") // active, paused, archived
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scans       Scan[]
+  subdomains  Subdomain[]
+  endpoints   Endpoint[]
+  vulnerabilities Vulnerability[]
+}
+
+model Scan {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String   @default("Full Recon")
+  status      String   @default("pending") // pending, running, completed, failed, paused
+  progress    Int      @default(0) // 0-100
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stages      ScanStage[]
+  logs        ScanLog[]
+  findings    Finding[]
+}
+
+model ScanStage {
+  id          String   @id @default(cuid())
+  scanId      String
+  stageName   String   // e.g. "passive_subdomain_enum", "active_subdomain_enum", etc.
+  displayName String   // Human-readable name
+  status      String   @default("pending") // pending, running, completed, failed, skipped
+  progress    Int      @default(0) // 0-100
+  resultsCount Int     @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  scan        Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+}
+
+model ScanLog {
+  id        String   @id @default(cuid())
+  scanId    String
+  level     String   @default("info") // info, warn, error, success
+  message   String
+  timestamp DateTime @default(now())
+
+  scan      Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+}
+
+model Finding {
+  id          String   @id @default(cuid())
+  scanId      String
+  category    String   // subdomain, endpoint, js_file, api, sensitive_file, login, admin, idor, secret, cloud_leak, etc.
+  severity    String   @default("info") // critical, high, medium, low, info
+  url         String
+  title       String
+  data        String   @default("{}") // JSON string for additional data
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  scan        Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+}
+
+model Subdomain {
+  id          String   @id @default(cuid())
+  projectId   String
+  domain      String
+  ip          String   @default("")
+  statusCode  Int      @default(0)
+  alive       Boolean  @default(false)
+  webServer   String   @default("")
+  title       String   @default("")
+  contentLength Int    @default(0)
+  techStack   String   @default("[]") // JSON array of technologies
+  source      String   @default("") // Where it was found
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Endpoint {
+  id          String   @id @default(cuid())
+  projectId   String
+  url         String
+  method      String   @default("GET")
+  statusCode  Int      @default(0)
+  contentType String   @default("")
+  contentLength Int    @default(0)
+  category    String   @default("general") // js, api, backend, login, upload, admin, sensitive, idor, interesting, cloud_leak
+  parameters  String   @default("[]") // JSON array of parameter names
+  responseTime Int     @default(0)
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Vulnerability {
+  id          String   @id @default(cuid())
+  projectId   String
+  title       String
+  severity    String   @default("medium") // critical, high, medium, low, info
+  description String   @default("")
+  url         String
+  template    String   @default("") // Nuclei template ID
+  type        String   @default("") // exposure, misconfig, injection, auth, etc.
+  data        String   @default("{}") // JSON string
+  status      String   @default("open") // open, confirmed, false_positive, fixed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}

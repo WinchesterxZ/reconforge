@@ -1,0 +1,256 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-emerald: #10b981;
+  --color-amber: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.07 0.005 270);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.1 0.005 270);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.1 0.005 270);
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.7 0.17 160);
+  --primary-foreground: oklch(0.1 0 0);
+  --secondary: oklch(0.18 0.005 270);
+  --secondary-foreground: oklch(0.9 0 0);
+  --muted: oklch(0.18 0.005 270);
+  --muted-foreground: oklch(0.6 0 0);
+  --accent: oklch(0.18 0.01 270);
+  --accent-foreground: oklch(0.95 0 0);
+  --destructive: oklch(0.65 0.25 25);
+  --border: oklch(0.2 0.005 270);
+  --input: oklch(0.2 0.005 270);
+  --ring: oklch(0.7 0.17 160);
+  --chart-1: oklch(0.7 0.17 160);
+  --chart-2: oklch(0.75 0.18 85);
+  --chart-3: oklch(0.65 0.25 25);
+  --chart-4: oklch(0.6 0.15 250);
+  --chart-5: oklch(0.55 0.05 270);
+  --sidebar: oklch(0.08 0.005 270);
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-primary: oklch(0.7 0.17 160);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.15 0.01 270);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.2 0.005 270);
+  --sidebar-ring: oklch(0.7 0.17 160);
+}
+
+.dark {
+  --background: oklch(0.07 0.005 270);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.1 0.005 270);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.1 0.005 270);
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.7 0.17 160);
+  --primary-foreground: oklch(0.1 0 0);
+  --secondary: oklch(0.18 0.005 270);
+  --secondary-foreground: oklch(0.9 0 0);
+  --muted: oklch(0.18 0.005 270);
+  --muted-foreground: oklch(0.6 0 0);
+  --accent: oklch(0.18 0.01 270);
+  --accent-foreground: oklch(0.95 0 0);
+  --destructive: oklch(0.65 0.25 25);
+  --border: oklch(0.2 0.005 270);
+  --input: oklch(0.2 0.005 270);
+  --ring: oklch(0.7 0.17 160);
+  --chart-1: oklch(0.7 0.17 160);
+  --chart-2: oklch(0.75 0.18 85);
+  --chart-3: oklch(0.65 0.25 25);
+  --chart-4: oklch(0.6 0.15 250);
+  --chart-5: oklch(0.55 0.05 270);
+  --sidebar: oklch(0.08 0.005 270);
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-primary: oklch(0.7 0.17 160);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.15 0.01 270);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.2 0.005 270);
+  --sidebar-ring: oklch(0.7 0.17 160);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom scrollbar - dark & thin */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: oklch(0.1 0.005 270);
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.25 0.01 270);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.35 0.01 270);
+}
+
+/* Terminal-style text */
+.terminal-text {
+  font-family: var(--font-geist-mono), 'Fira Code', 'JetBrains Mono', monospace;
+  line-height: 1.6;
+}
+
+/* Glow effect for active elements */
+.glow-emerald {
+  box-shadow: 0 0 15px oklch(0.7 0.17 160 / 0.15), 0 0 30px oklch(0.7 0.17 160 / 0.05);
+}
+
+.glow-amber {
+  box-shadow: 0 0 15px oklch(0.75 0.18 85 / 0.15), 0 0 30px oklch(0.75 0.18 85 / 0.05);
+}
+
+.glow-danger {
+  box-shadow: 0 0 15px oklch(0.65 0.25 25 / 0.15), 0 0 30px oklch(0.65 0.25 25 / 0.05);
+}
+
+/* Pulse animation for running status */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px oklch(0.6 0.15 250 / 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px oklch(0.6 0.15 250 / 0.4);
+  }
+}
+
+.pulse-running {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Scan line effect for terminal */
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+/* Fade in animation */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out;
+}
+
+/* Custom table styles for dark theme */
+.dark-table-row:hover {
+  background: oklch(0.15 0.01 270);
+}
+
+/* Status indicator dots */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot-alive {
+  background: oklch(0.7 0.17 160);
+  box-shadow: 0 0 6px oklch(0.7 0.17 160 / 0.5);
+}
+
+.status-dot-dead {
+  background: oklch(0.5 0 0);
+}
+
+.status-dot-running {
+  background: oklch(0.6 0.15 250);
+  box-shadow: 0 0 6px oklch(0.6 0.15 250 / 0.5);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.status-dot-critical {
+  background: oklch(0.65 0.25 25);
+  box-shadow: 0 0 6px oklch(0.65 0.25 25 / 0.5);
+}
+
+.status-dot-warning {
+  background: oklch(0.75 0.18 85);
+  box-shadow: 0 0 6px oklch(0.75 0.18 85 / 0.5);
+}
+
+/* Override chart tooltip for dark theme */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: oklch(0.1 0.005 270) !important;
+  border: 1px solid oklch(0.2 0.005 270) !important;
+  border-radius: 8px !important;
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip .recharts-tooltip-label {
+  color: oklch(0.9 0 0) !important;
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip .recharts-tooltip-item {
+  color: oklch(0.7 0 0) !important;
+}
