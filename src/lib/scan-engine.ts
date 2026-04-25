@@ -498,6 +498,84 @@ async function addLog(scanId: string, level: string, message: string) {
   }
 }
 
+// ─── Endpoint creation helper (graceful soft404 fallback) ─────────────────────
+// The isSoft404 and responseBody fields may not exist in older databases.
+// This helper tries to create with all fields first, then falls back without them.
+
+let _soft404Supported: boolean | null = null; // cached check
+
+async function createEndpoint(projectId: string, ep: {
+  url: string; method: string; statusCode: number; contentType: string;
+  contentLength: number; category: string; parameters: string; responseTime: number;
+  isSoft404: boolean; responseBody: string;
+}) {
+  // First call: detect whether the DB supports isSoft404
+  if (_soft404Supported === null) {
+    try {
+      await db.endpoint.create({
+        data: {
+          projectId,
+          url: ep.url,
+          method: ep.method,
+          statusCode: ep.statusCode,
+          contentType: ep.contentType,
+          contentLength: ep.contentLength,
+          category: ep.category,
+          parameters: ep.parameters,
+          responseTime: ep.responseTime,
+          isSoft404: ep.isSoft404,
+          responseBody: ep.responseBody,
+        },
+      });
+      _soft404Supported = true;
+      return;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('isSoft404') || msg.includes('responseBody')) {
+        _soft404Supported = false;
+        // Fall through to retry without those fields
+      } else {
+        throw err; // re-raise if it's a different error
+      }
+    }
+  }
+
+  // If soft404 is NOT supported, create without those fields
+  if (_soft404Supported === false) {
+    await db.endpoint.create({
+      data: {
+        projectId,
+        url: ep.url,
+        method: ep.method,
+        statusCode: ep.statusCode,
+        contentType: ep.contentType,
+        contentLength: ep.contentLength,
+        category: ep.category,
+        parameters: ep.parameters,
+        responseTime: ep.responseTime,
+      },
+    });
+    return;
+  }
+
+  // Normal path (soft404 supported)
+  await db.endpoint.create({
+    data: {
+      projectId,
+      url: ep.url,
+      method: ep.method,
+      statusCode: ep.statusCode,
+      contentType: ep.contentType,
+      contentLength: ep.contentLength,
+      category: ep.category,
+      parameters: ep.parameters,
+      responseTime: ep.responseTime,
+      isSoft404: ep.isSoft404,
+      responseBody: ep.responseBody,
+    },
+  });
+}
+
 // ─── Main scan simulation ─────────────────────────────────────────────────────
 
 export async function startScanSimulation(scanId: string, projectId: string, domains: string) {
@@ -613,19 +691,24 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
         case 'api_fuzzing': {
           const endpoints = generateEndpoints(primaryDomain);
           const soft404Count = endpoints.filter(ep => ep.isSoft404).length;
+          let savedCount = 0;
           for (const ep of endpoints) {
-            const existing = await db.endpoint.findFirst({
-              where: { projectId, url: ep.url, method: ep.method },
-            });
-            if (!existing) {
-              await db.endpoint.create({
-                data: { projectId, ...ep },
+            try {
+              const existing = await db.endpoint.findFirst({
+                where: { projectId, url: ep.url, method: ep.method },
               });
+              if (!existing) {
+                await createEndpoint(projectId, ep);
+                savedCount++;
+              }
+            } catch (epErr) {
+              // Individual endpoint failures should not kill the whole stage
+              await addLog(scanId, 'warn', `[${stage.displayName}] Failed to save endpoint ${ep.url}: ${epErr instanceof Error ? epErr.message : 'Unknown'}`);
             }
           }
-          resultsCount = endpoints.length;
-          await addLog(scanId, 'success', `[${stage.displayName}] Discovered ${endpoints.length} endpoints`);
-          if (soft404Count > 0) {
+          resultsCount = savedCount;
+          await addLog(scanId, 'success', `[${stage.displayName}] Discovered ${savedCount} endpoints (${endpoints.length - savedCount} duplicates skipped)`);
+          if (soft404Count > 0 && _soft404Supported) {
             await addLog(scanId, 'warn', `[${stage.displayName}] ${soft404Count} endpoints flagged as soft 404 (HTTP 200 with error page content)`);
           }
           break;
@@ -637,19 +720,23 @@ export async function startScanSimulation(scanId: string, projectId: string, dom
             await addLog(scanId, 'success', `[${stage.displayName}] No sensitive files discovered`);
           } else {
             const endpoints = generateEndpoints(primaryDomain).filter(ep => ep.category === 'sensitive' && ep.statusCode === 200 && !ep.isSoft404);
+            let savedSensitive = 0;
             for (const ep of endpoints) {
-              const existing = await db.endpoint.findFirst({
-                where: { projectId, url: ep.url, method: ep.method },
-              });
-              if (!existing) {
-                await db.endpoint.create({
-                  data: { projectId, ...ep },
+              try {
+                const existing = await db.endpoint.findFirst({
+                  where: { projectId, url: ep.url, method: ep.method },
                 });
+                if (!existing) {
+                  await createEndpoint(projectId, ep);
+                  savedSensitive++;
+                }
+              } catch {
+                // Skip individual failures
               }
             }
-            resultsCount = endpoints.length;
-            if (resultsCount > 0) {
-              await addLog(scanId, 'warn', `[${stage.displayName}] Found ${resultsCount} exposed sensitive files!`);
+            resultsCount = savedSensitive;
+            if (savedSensitive > 0) {
+              await addLog(scanId, 'warn', `[${stage.displayName}] Found ${savedSensitive} exposed sensitive files!`);
             } else {
               await addLog(scanId, 'success', `[${stage.displayName}] No sensitive files discovered`);
             }
