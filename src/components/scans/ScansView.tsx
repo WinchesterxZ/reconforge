@@ -171,7 +171,7 @@ function mapApiScan(apiScan: ApiScan): Scan {
 }
 
 export function ScansView() {
-  const { selectedScanId, selectScan } = useAppStore();
+  const { selectedScanId, selectScan, selectedProjectId } = useAppStore();
   const [scans, setScans] = useState<Scan[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
@@ -179,7 +179,8 @@ export function ScansView() {
 
   const fetchScans = useCallback(async () => {
     try {
-      const res = await fetch('/api/scans');
+      const params = selectedProjectId ? `?projectId=${selectedProjectId}` : '';
+      const res = await fetch(`/api/scans${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       const mapped = (data.scans || []).map(mapApiScan);
@@ -189,13 +190,18 @@ export function ScansView() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, selectedProjectId]);
 
   useEffect(() => {
     fetchScans();
   }, [fetchScans]);
 
-  // Auto-select first scan if none selected
+  // Auto-select first scan if none selected, and clear selection when project changes
+  useEffect(() => {
+    selectScan(null);
+    setSelectedStageId(null);
+  }, [selectedProjectId, selectScan]);
+
   useEffect(() => {
     if (!selectedScanId && scans.length > 0) {
       selectScan(scans[0].id);
@@ -203,20 +209,22 @@ export function ScansView() {
   }, [scans, selectedScanId, selectScan]);
 
   const handleStartScan = async () => {
-    if (scans.length > 0) {
-      const projectId = scans[0].projectId;
-      try {
-        const res = await fetch('/api/scans', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId, name: 'New Recon Scan' }),
-        });
-        if (!res.ok) throw new Error('Failed to start scan');
-        toast({ title: 'Scan Started', description: 'New reconnaissance scan has been initiated.' });
-        fetchScans();
-      } catch {
-        toast({ title: 'Error', description: 'Failed to start scan', variant: 'destructive' });
-      }
+    const projectId = selectedProjectId || scans[0]?.projectId;
+    if (!projectId) {
+      toast({ title: 'Error', description: 'No target selected. Please select a target first.', variant: 'destructive' });
+      return;
+    }
+    try {
+      const res = await fetch('/api/scans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, name: 'New Recon Scan' }),
+      });
+      if (!res.ok) throw new Error('Failed to start scan');
+      toast({ title: 'Scan Started', description: 'New reconnaissance scan has been initiated.' });
+      fetchScans();
+    } catch {
+      toast({ title: 'Error', description: 'Failed to start scan', variant: 'destructive' });
     }
   };
 
@@ -442,7 +450,17 @@ export function ScansView() {
           <CardContent className="flex items-center justify-center h-64 text-muted-foreground text-sm">
             <div className="text-center">
               <Radar className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              <p>No scans yet. Start a new scan from a target.</p>
+              <p>No scans yet for this target.</p>
+              {selectedProjectId && (
+                <Button
+                  onClick={handleStartScan}
+                  variant="outline"
+                  className="mt-4 border-primary text-primary hover:bg-primary/10 gap-2"
+                >
+                  <Play className="h-4 w-4" />
+                  Start First Scan
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
